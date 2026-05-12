@@ -7,21 +7,87 @@
         csi_unix_entries: []
         csi_datasets: {}
 
-    - name: Identify Missing Critical Software Updates for {{outer_var.name}}
-      ansible.builtin.include_role:
-        name: ibm.ibm_zosmf.zmf_swmgmt_identify_missing_critical_updates
-      vars:
-        software_instance_name: '{{ outer_var.name }}'
-        system_nickname: '{{outer_var.system}}'
-        missing_critical_updates_response_file: '{{ playbook_dir }}/playbook_output/{{ software_instance_name }}-MissingCriticalUpdatesReport.json'
+    - name: Query zosmf MCU for {{outer_var.name}}
+      ansible.builtin.uri:
+        url: "https://{{ zmf_host }}/zosmf/swmgmt/swi/{{outer_var.swiuuid}}/missingcriticalupdates"
+        method: POST
+        user: "{{ zmf_user | trim }}"
+        password: "{{ zmf_password | trim }}"
+        force_basic_auth: true
+        headers:
+          Host: "{{ zmf_host }}"
+          Origin: "https://{{ zmf_host }}"
+        validate_certs: false
+        return_content: true
+        status_code: "202"
+      register: getmcus_status
+      delegate_to: localhost
+      ignore_errors: true
 
-    - name: Identify Missing Critical Software Updates for {{outer_var.name}}
-      ansible.builtin.include_role:
-        name: ibm.ibm_zosmf.zmf_swmgmt_identify_missing_fixcat_updates
-      vars:
-        software_instance_name: '{{ outer_var.name }}'
-        system_nickname: '{{outer_var.system}}'
-        missing_fixcat_updates_response_file: '{{ playbook_dir }}/playbook_output/{{ software_instance_name }}-MissingFixcatUpdatesReport.json'
+    - name: Retrieve zosmf MCU output
+      ansible.builtin.uri:
+        url: "{{ getmcus_status.json.statusurl}}"
+        method: GET
+        user: "{{ zmf_user | trim }}"
+        password: "{{ zmf_password | trim }}"
+        force_basic_auth: true
+        headers:
+          Host: "{{ zmf_host }}"
+          Origin: "https://{{ zmf_host }}"
+        validate_certs: false
+        return_content: true
+        status_code: "200"
+      register: mcus
+      retries: 60
+      delay: 5
+      delegate_to: localhost
+
+    - name: Save MCU output to file
+      copy:
+        content: "{{ mcus.json | to_nice_json }}"
+        dest: '{{ playbook_dir }}/playbook_output/{{ software_instance_name }}-MissingCriticalUpdatesReport.json'
+        mode: '0644'
+
+    - name: Query zosmf MFU for {{outer_var.name}}
+      ansible.builtin.uri:
+        url: "https://{{ zmf_host }}/zosmf/swmgmt/swi/{{outer_var.swiuuid}}/missingfixcatupdates"
+        method: POST
+        user: "{{ zmf_user | trim }}"
+        password: "{{ zmf_password | trim }}"
+        force_basic_auth: true
+        headers:
+          Host: "{{ zmf_host }}"
+          Origin: "https://{{ zmf_host }}"
+        validate_certs: false
+        return_content: true
+        status_code: "202"
+      register: getmfus_status
+      delegate_to: localhost
+      ignore_errors: true
+
+    - name: Retrieve zosmf MFU output
+      ansible.builtin.uri:
+        url: "{{ getmfus_status.json.statusurl}}"
+        method: GET
+        user: "{{ zmf_user | trim }}"
+        password: "{{ zmf_password | trim }}"
+        force_basic_auth: true
+        headers:
+          Host: "{{ zmf_host }}"
+          Origin: "https://{{ zmf_host }}"
+        validate_certs: false
+        return_content: true
+        status_code: "200"
+      register: mfus
+      retries: 60
+      delay: 5
+      delegate_to: localhost
+
+    - name: Save MFU output to file
+      copy:
+        content: "{{ mfus.json | to_nice_json }}"
+        dest: '{{ playbook_dir }}/playbook_output/{{ software_instance_name }}-MissingFixcatUpdatesReport.json'
+        mode: '0644'
 
     - name: Query zosmf CSI HOLDDATA for {{outer_var.name}}
       ansible.builtin.uri:
@@ -60,6 +126,8 @@
         return_content: true
         status_code: "200"
       register: csi_ds
+      retries: 60
+      delay: 5
       delegate_to: localhost
 
     - name: Query zosmf CSI libraries for {{outer_var.name}}
@@ -94,6 +162,8 @@
         return_content: true
         status_code: "200"
       register: csi_libs
+      retries: 60
+      delay: 5
       delegate_to: localhost
 
   ignore_errors: true
