@@ -146,8 +146,23 @@
 
     - name: Save content in a variable
       ansible.builtin.set_fact:
-        mcu: "{{ mcu_file_content['content'] | b64decode | from_json }}"
+        mcu_raw: "{{ mcu_file_content['content'] | b64decode | from_json }}"
         mfu: "{{ mfu_file_content['content'] | b64decode | from_json }}"
+
+    - name: Filter out missing critical updates with blank holdclass
+      ansible.builtin.set_fact:
+        mcu: "{{ mcu_raw | combine({'missingcriticalupdates': mcu_raw.missingcriticalupdates | selectattr('holdclass', 'ne', '') | list}) }}"
+      when: mcu_raw.missingcriticalupdates is not none and mcu_raw.missingcriticalupdates | length > 0
+
+    - name: Nullify missingcriticalupdates if filter results in empty list
+      ansible.builtin.set_fact:
+        mcu: "{{ mcu | combine({'missingcriticalupdates': none}) }}"
+      when: mcu is defined and mcu.missingcriticalupdates is not none and mcu.missingcriticalupdates | length == 0
+
+    - name: Use raw MCU when missingcriticalupdates is null or empty
+      ansible.builtin.set_fact:
+        mcu: "{{ mcu_raw }}"
+      when: mcu_raw.missingcriticalupdates is none or mcu_raw.missingcriticalupdates | length == 0
 
     - name: Get zosmf software instance detail
       ansible.builtin.uri:
